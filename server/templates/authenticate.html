@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+{% block title %}Authenticate{% endblock %}
+{% block toptext %}
+Status: <span id="status">Initializing</span>
+{% endblock %}
+{% block javascript %}
+    <script type="text/javascript" src="//code.jquery.com/jquery-1.4.2.min.js"></script>
+    <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/0.9.16/socket.io.min.js"></script>
+    <script type="text/javascript" src="/static/jquery.qrcode.js"></script>
+    <script type="text/javascript" src="/static/qrcode.js"></script>
+    <script type="text/javascript" charset="utf-8">
+        $(document).ready(function(){
+            $('#status').text('Connecting');
+
+            var namespace = '/irma'; // change to an empty string to use the global namespace
+            var connectionID = '{{ connid }}';
+
+            var socket = io.connect('http://' + document.domain + ':' + location.port + namespace);
+            socket.on('connected', function() {
+                // Join the "room" for this connection, so we know when the client is finished
+                socket.emit('join', {room: connectionID});
+
+                // Show connection details
+                $('#status').text('Joining');
+            });
+
+            socket.on('joined', function() {
+                var connURL = 'http://' + document.domain + ':' + location.port + '#' + connectionID;
+
+                $('#status').text('Waiting for proxy');
+                $('#connstring').text('Please connect your client to ' + connURL);
+                $('#qrcode').qrcode(connURL);
+            });
+
+            socket.on('proxied', function() {
+                $('#status').text('Proxy connected');
+            });
+
+            socket.on('retrieving', function(credential) {
+                $('#status').text('Retrieving ' + credential);
+            });
+
+            socket.on('finished', function(response) {
+                $('#status').text('Finished!');
+                $('#connstring').remove();
+                $('#qrcode').remove();
+
+                $('#continueForm')
+                    .append(
+                        $('<input>')
+                            .attr('type', 'hidden')
+                            .attr('name', 'result')
+                            .attr('value', response),
+                        $('<input>')
+                            .attr('type', 'submit')
+                            .attr('value', 'Continue'),
+                        $('<br>'),
+                        $('<span>').text('If you are not redirected automatically, click Continue.'))
+                    .submit();
+            });
+        });
+    </script>
+{% endblock %}
+{% block body %}
+<form id="continueForm" action="{{ returnurl }}" method="POST"></form>
+<span id="connstring"></span>
+<br /><br />
+<div id="qrcode"></div>
+{% endblock %}

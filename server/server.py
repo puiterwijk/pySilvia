@@ -1,10 +1,41 @@
+# Copyright (c) 2014, Patrick Uiterwijk <puiterwijk@gmail.com>
+# All rights reserved.
+#
+# This file is part of pySilvia.
+#
+# pySilvia is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# pySilvia is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with pySilvia.  If not, see <http://www.gnu.org/licenses/>.
+
+# Please configure the path to the silvia verifier and issuer bin dir and the IRMA configuration dir
+VERIFIER_PATH = '/usr/bin/silvia_verifier'
+ISSUER_PATH = '/usr/bin/silvia_issuer'
+CONFIG_ROOT = '/usr/share/irma_configuration'
+ENABLE_TEST_REQUEST = False
+SECRET_KEY = 'setme'
+SHARED_SECRET = 'setme'
+
+
+# No changes need hereunder
 from gevent import monkey
 monkey.patch_all()
 
 import subprocess32 as subprocess
 
-from flask import Flask, render_template, session, jsonify, abort, request
-from flask.ext.socketio import SocketIO, emit
+from time import time
+from itsdangerous import TimedSerializer
+from uuid import uuid4 as uuid
+from flask import Flask, render_template, session, request, jsonify
+from flask.ext.socketio import SocketIO, emit, join_room
 
 
 import logging
@@ -12,24 +43,81 @@ logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
 
 
-
 app = Flask(__name__)
 app.debug = True
-app.config['SECRET_KEY'] = 'secret!'
+app.config['SECRET_KEY'] = SECRET_KEY
 socketio = SocketIO(app)
 
-
-@app.route('/')
-def index():
-    return render_template('index.html')
+connections = {}
+seen_nonces = set()
 
 
-@app.route('/transaction/create/', methods=['POST'])
-def transaction_create():
-    if not request.json or 'authorization' not in request.json:
-        abort(400)
+signer = TimedSerializer(SHARED_SECRET)
 
-    return jsonify({'test': 'test123'})
+
+if ENABLE_TEST_REQUEST:
+    @app.route('/')
+    def index():
+        # This is used to create a testing request
+        credentials = {}
+        credentials['rootNone'] = {'issuer-spec-path': 'Surfnet/Issues/root/description.xml',
+                                   'verifier-spec-path': 'Surfnet/Verifies/rootNone/description.xml',
+                                   'publickey-path': 'Surfnet/ipk.xml'}
+
+
+        new_req = {'token': uuid().hex,
+                   'nonce': time(),
+                   'return_url': '/test/',
+                   'credentials': credentials}
+        new_req = signer.dumps(new_req)
+
+        return render_template('index.html',
+                               request=new_req)
+
+    @app.route('/test/', methods=['POST'])
+    def view_test():
+        result = request.form['result']
+        result = signer.loads(result)
+
+        return jsonify(result)
+
+
+@app.route('/authenticate/', methods=['POST'])
+def view_authenticate():
+    json_request = request.form['request']
+    json_request = signer.loads(json_request)
+
+    # Check nonce
+    if json_request['nonce'] in seen_nonces:
+        return 'USED NONCE'
+    seen_nonces.add(json_request['nonce'])
+
+    session['connid'] = uuid().hex
+    connection = {}
+    connection['token'] = json_request['token']
+    connection['credentials'] = json_request['credentials']
+    connection['current_credential'] = None
+    connection['credentials_results'] = {}
+    connections[session['connid']] = connection
+
+    return render_template('authenticate.html',
+                           connid=session['connid'],
+                           returnurl=json_request['return_url'])
+
+
+@socketio.on('join', namespace='/irma')
+def room_join(message):
+    join_room(message['room'])
+    emit('joined', {'data': 'Room joined'}, room=message['room'])
+
+
+# These functions are used by the proxy
+@socketio.on('login', namespace='/irma')
+def login(message):
+    connid = message['connID']
+    session['connid'] = message['connID']
+    emit('proxied', {'data': 'Proxy connected'}, room=connid)
+    emit('loggedin', {})
 
 
 def kill_verifier():
@@ -43,14 +131,23 @@ def kill_verifier():
 
 @socketio.on('card_connected', namespace='/irma')
 def card_connected(message):
-    cmd = ['/home/puiterwijk/Documents/Development/Upstream/silvia/src/bin/verifier/silvia_verifier',
+    # Get the next credential
+    credentials = connections[session['connid']]['credentials']
+    credential = credentials.keys()[0]
+    connections[session['connid']]['current_credential'] = credential
+    credential_name = credential
+    credential = credentials[credential]
+
+    emit('retrieving', credential_name, room=session['connid'])
+
+    cmd = [VERIFIER_PATH,
            '-S',
            '-I',
-           '/home/puiterwijk/Documents/Development/Fedora/IRMA/irma_configuration/Fedora/Issues/fasRoot/description.xml',
+           '%s/%s' % (CONFIG_ROOT, credential['issuer-spec-path']),
            '-V',
-           '/home/puiterwijk/Documents/Development/Fedora/IRMA/irma_configuration/Fedora/Verifies/fedora/description.xml',
+           '%s/%s' % (CONFIG_ROOT, credential['verifier-spec-path']),
            '-k',
-           '/home/puiterwijk/Documents/Development/Fedora/IRMA/irma_configuration/Fedora/ipk.xml']
+           '%s/%s' % (CONFIG_ROOT, credential['publickey-path'])]
 
     session['verifier'] = subprocess.Popen(cmd,
                                            stdin=subprocess.PIPE,
@@ -104,13 +201,40 @@ def card_response(message):
     if control == 'request':
         emit('card_request', {'data': options})
     elif control == 'result':
-        results = [result] + session['verifier'].stdout.read().split('\n')
-        # TODO: Mark this session as DONE
+        results = session['verifier'].stdout.read().split('\n')
+        results = [rslt.split(' ') for rslt in results[:-1]]
+        status = result.split(' ')[1]
+        expiry = 0
+        attributes = {}
 
-        print 'Results: %s' % results
+        for result in results:
+            if result[0] == 'result' and result[1] == 'expiry':
+                expiry = result[2]
+            elif result[0] == 'attribute':
+                attributes[result[1]] = result[2]
 
-        emit('finished', {})
+        credential = connections[session['connid']]['current_credential']
+        connections[session['connid']]['credentials_results'][credential] = {'status': status,
+                                                                             'expiry': expiry,
+                                                                             'attributes': attributes}
+
+        del connections[session['connid']]['credentials'][credential]
         kill_verifier()
+
+        if len(connections[session['connid']]['credentials']) > 0:
+            # Tell the client again they can start the protocol, so it reconnects to the card
+            emit('loggedin', {})
+            return
+        else:
+            # No more credentials. Return
+            response = {'credentials': connections[session['connid']]['credentials_results'],
+                        'token': connections[session['connid']]['token']}
+
+            response = signer.dumps(response)
+
+            emit('finished', response, room=session['connid'])
+            # This is to the proxy, so it doesn't need to be in the room
+            emit('finished', {})
     elif control == 'error':
         emit('card_error', {'code': options})
         kill_verifier()

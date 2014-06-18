@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+    <head>
+        <title>pySilvia - {% block title %}{% endblock %}</title>
+        <link rel="stylesheet" href="/static/fedoauth.css">
+
+        {% block javascript %}
+        {% endblock %}
+    </head>
+    <body {% block body_options %}{% endblock %}>
+        <div class="header_bg">
+            <div class="body header">
+                <img id="logo" alt="logo" src="/static/logo.png"/>
+            </div>
+        </div>
+        <div class="body main">
+            <p id="toptext">{% block toptext %}{% endblock %}</p>
+            <div class="middlebox {% block body_classes %}{% endblock %}">
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        <ul class=flashes>
+                            {% for message in messages %}
+                                <li>{{ message }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                {% endwith %}
+                {% block body %}{% endblock %}
+            </div>
+        </div>
+    </body>
+</html>

@@ -1,3 +1,26 @@
+# Copyright (c) 2014, Patrick Uiterwijk <puiterwijk@gmail.com>
+# All rights reserved.
+#
+# This file is part of pySilvia.
+#
+# pySilvia is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# pySilvia is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with pySilvia.  If not, see <http://www.gnu.org/licenses/>.
+
+# Please configure the path to the silvia_proxy binary
+PROXY_PATH = '/usr/bin/silvia_proxy'
+
+
+# No changes need hereunder
 from socketIO_client import SocketIO, BaseNamespace
 import sys
 
@@ -10,12 +33,14 @@ logging.getLogger().setLevel(logging.DEBUG)
 
 class IrmaNamespace(BaseNamespace):
     def initialize(self):
-        print 'irma init'
+        global connectionID
+        self.connectionID = connectionID
 
     def on_connected(self, *args):
-        print 'Connected to server', args
-        print 'Initializing proxy'
-        self.proxy = subprocess.Popen('/home/puiterwijk/Documents/Development/Upstream/silvia/src/bin/proxy/silvia_proxy',
+        irma_namespace.emit('login', {'connID': self.connectionID})
+
+    def on_loggedin(self, *args):
+        self.proxy = subprocess.Popen(PROXY_PATH,
                                       stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE)
@@ -32,7 +57,6 @@ class IrmaNamespace(BaseNamespace):
             print 'Status: %s' % status
             sys.exit(1)
 
-        print 'Proxy read. Waiting for: %s' % status.split(' ')[2]
         status = self.proxy.stdout.readline().replace('\n', '')
         if status == 'control connected':
             print 'Card connected! Notifying server and starting protocol.'
@@ -46,12 +70,7 @@ class IrmaNamespace(BaseNamespace):
         self.proxy.stdin.write('request %s\n' % request)
         return self.proxy.stdout.readline().replace('\n', '')
 
-
-    def on_card_connect_response(self, *args):
-        print 'on_card_connect_response', args
-
     def on_card_request(self, *args):
-        print 'Card request recieved!'
         request = args[0]['data']
         response = self.perform_request(request)
         if response.startswith('response'):
@@ -59,11 +78,21 @@ class IrmaNamespace(BaseNamespace):
             socketIO.wait(seconds=1)
 
     def on_finished(self, *args):
-        print 'Process finished!'
         irma_namespace.disconnect()
 
 
-with SocketIO('localhost', 5000) as socketIO:
+# Get Connection string
+connURL = ''
+while (connURL == ''
+        or '#' not in connURL
+        or not (connURL.startswith('http://') or
+                connURL.startswith('https://'))):
+    sys.stdout.write('Please enter the connection URL: ')
+    connURL = sys.stdin.readline().replace('\n', '').strip()
+
+url, connectionID = connURL.split('#')
+
+with SocketIO(url) as socketIO:
     irma_namespace = socketIO.define(IrmaNamespace, '/irma')
 
     socketIO.wait(seconds=1)
