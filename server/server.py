@@ -29,7 +29,10 @@ SHARED_SECRET = 'setme'
 from gevent import monkey
 monkey.patch_all()
 
-import subprocess32 as subprocess
+try:
+    import subprocess32 as subprocess
+except ImportError:
+    import subprocess
 
 from time import time
 from itsdangerous import TimedSerializer

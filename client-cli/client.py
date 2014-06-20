@@ -24,7 +24,10 @@ PROXY_PATH = '/usr/bin/silvia_proxy'
 from socketIO_client import SocketIO, BaseNamespace
 import sys
 
-import subprocess32 as subprocess
+try:
+    import subprocess32 as subprocess
+except ImportError:
+    import subprocess
 
 import logging
 logging.basicConfig()
