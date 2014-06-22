@@ -98,9 +98,11 @@ def view_authenticate():
     session['connid'] = uuid().hex
     connection = {}
     connection['token'] = json_request['token']
-    connection['credentials'] = json_request['credentials']
+    connection['to_verify'] = json_request['credentials']
+    connection['to_issue'] = json_request.get('issue')
     connection['current_credential'] = None
-    connection['credentials_results'] = {}
+    connection['verify_results'] = {}
+    connection['issue_results'] = {}
     connections[session['connid']] = connection
 
     return render_template('authenticate.html',
@@ -123,52 +125,70 @@ def login(message):
     emit('loggedin', {})
 
 
-def kill_verifier():
-    if 'verifier' in session:
-        session['verifier'].poll()
-        if session['verifier'].returncode is None:
-            session['verifier'].kill()
-        session['verifier'].poll()
-        del session['verifier']
+def kill_process():
+    if 'process' in session:
+        session['process'].poll()
+        if session['process'].returncode is None:
+            session['process'].kill()
+        session['process'].poll()
+        del session['process']
 
 
 @socketio.on('card_connected', namespace='/irma')
 def card_connected(message):
     # Get the next credential
-    credentials = connections[session['connid']]['credentials']
-    credential = credentials.keys()[0]
+    current_operation = ''
+    if len(connections[session['connid']]['to_verify']) > 0:
+        current_operation = 'verify'
+    elif len(connections[session['connid']]['to_issue']) > 0:
+        current_operation = 'issue'
+        credentials = connections[session['connid']]['to_issue']
+        # ISSUE
+    else:
+        # Huh?
+        raise Exception('Invalid state: no-ver and no-iss')
+
+    credentials = connections[session['connid']]['to_%s' % current_operation]
+    credential_name = credentials.keys()[0]
+    credential = credentials[credential_name]
     connections[session['connid']]['current_credential'] = credential
-    credential_name = credential
-    credential = credentials[credential]
+    connections[session['connid']]['current_credential']['name'] = credential_name
+    connections[session['connid']]['current_credential']['operation'] = current_operation
+    del connections[session['connid']]['to_%s' % current_operation][credential_name]
 
-    emit('retrieving', credential_name, room=session['connid'])
+    cmd = None
+    if current_operation == 'verify':
+        emit('retrieving', credential_name, room=session['connid'])
+        cmd = [VERIFIER_PATH,
+               '-S',
+               '-I',
+               '%s/%s' % (CONFIG_ROOT, credential['issuer-spec-path']),
+               '-V',
+               '%s/%s' % (CONFIG_ROOT, credential['verifier-spec-path']),
+               '-k',
+               '%s/%s' % (CONFIG_ROOT, credential['publickey-path'])]
+    elif current_operation == 'issue':
+        # TODO: START ISSUER
+        emit('issueing', credential_name, room=session['connid'])
+        pass
 
-    cmd = [VERIFIER_PATH,
-           '-S',
-           '-I',
-           '%s/%s' % (CONFIG_ROOT, credential['issuer-spec-path']),
-           '-V',
-           '%s/%s' % (CONFIG_ROOT, credential['verifier-spec-path']),
-           '-k',
-           '%s/%s' % (CONFIG_ROOT, credential['publickey-path'])]
+    session['process'] = subprocess.Popen(cmd,
+                                          stdin=subprocess.PIPE,
+                                          stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE)
 
-    session['verifier'] = subprocess.Popen(cmd,
-                                           stdin=subprocess.PIPE,
-                                           stdout=subprocess.PIPE,
-                                           stderr=subprocess.PIPE)
-
-    session['verifier'].poll()
-    if session['verifier'].returncode is not None:
-        emit('weird-error', {'stdout': session['verifier'].stdout.read(),
-                             'stderr': session['verifier'].stderr.read()})
-        kill_verifier()
+    session['process'].poll()
+    if session['process'].returncode is not None:
+        emit('weird-error', {'stdout': session['process'].stdout.read(),
+                             'stderr': session['process'].stderr.read()})
+        kill_process()
         return
 
-    command = session['verifier'].stdout.readline().replace('\n', '')
+    command = session['process'].stdout.readline().replace('\n', '')
 
     if command == '':
-        emit('no-response', {'stderr': session['verifier'].stderr.read()})
-        kill_verifier()
+        emit('no-response', {'stderr': session['process'].stderr.read()})
+        kill_process()
         return
 
     control, options = command.split(' ', 1)
@@ -178,25 +198,25 @@ def card_connected(message):
         return
     elif control == 'error':
         emit('card_error', {'code': options})
-        kill_verifier()
+        kill_process()
         return
     else:
         # Something went wrong
         emit('weird_response', {'control': control,
                                 'options': options,
-                                'stderr': session['verifier'].stderr.read()})
-        kill_verifier()
+                                'stderr': session['process'].stderr.read()})
+        kill_process()
         return
 
 
 @socketio.on('card_response', namespace='/irma')
 def card_response(message):
-    session['verifier'].stdin.write('%s\n' % message['data'])
+    session['process'].stdin.write('%s\n' % message['data'])
 
-    result = session['verifier'].stdout.readline().replace('\n', '')
+    result = session['process'].stdout.readline().replace('\n', '')
     if result == '' or ' ' not in result:
         emit('card_error', {'code': result})
-        kill_verifier()
+        kill_process()
         return
 
     control, options = result.split(' ', 1)
@@ -204,7 +224,7 @@ def card_response(message):
     if control == 'request':
         emit('card_request', {'data': options})
     elif control == 'result':
-        results = session['verifier'].stdout.read().split('\n')
+        results = session['process'].stdout.read().split('\n')
         results = [rslt.split(' ') for rslt in results[:-1]]
         status = result.split(' ')[1]
         expiry = 0
@@ -217,20 +237,29 @@ def card_response(message):
                 attributes[result[1]] = result[2]
 
         credential = connections[session['connid']]['current_credential']
-        connections[session['connid']]['credentials_results'][credential] = {'status': status,
-                                                                             'expiry': expiry,
-                                                                             'attributes': attributes}
+        if credential['operation'] == 'verify':
+            # TODO: Check expected credential result values against retrieved values
 
-        del connections[session['connid']]['credentials'][credential]
-        kill_verifier()
+            connections[session['connid']]['verify_results'][credential['name']] = {'status': status,
+                                                                                    'expiry': expiry,
+                                                                                    'attributes': attributes}
+        elif credential['operation'] == 'issue':
+            # TODO: check for issuance result
+            connections[session['connid']]['issue_results'][credential['name']] = {'status': status}
+            pass
 
-        if len(connections[session['connid']]['credentials']) > 0:
+
+        kill_process()
+
+        if (len(connections[session['connid']]['to_verify']) > 0 or
+                len(connections[session['connid']]['to_issue']) > 0):
             # Tell the client again they can start the protocol, so it reconnects to the card
             emit('loggedin', {})
             return
         else:
             # No more credentials. Return
-            response = {'credentials': connections[session['connid']]['credentials_results'],
+            response = {'credentials': connections[session['connid']]['verify_results'],
+                        'issued': connections[session['connid']]['issue_results'],
                         'token': connections[session['connid']]['token']}
 
             response = signer.dumps(response)
@@ -240,13 +269,13 @@ def card_response(message):
             emit('finished', {})
     elif control == 'error':
         emit('card_error', {'code': options})
-        kill_verifier()
+        kill_process()
     else:
         # Something went wrong!!!!
         emit('weird_response', {'control': control,
                                 'options': options,
-                                'stderr': session['verifier'].stderr.read()})
-        kill_verifier()
+                                'stderr': session['process'].stderr.read()})
+        kill_process()
 
 
 @socketio.on('connect', namespace='/irma')
@@ -258,7 +287,7 @@ def irma_connect():
 @socketio.on('disconnect', namespace='/irma')
 def irma_disconnect():
     print('Client disconnected')
-    kill_verifier()
+    kill_process()
 
 
 if __name__ == '__main__':
