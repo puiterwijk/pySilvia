@@ -211,7 +211,7 @@ def card_connected(message):
 
 @socketio.on('card_response', namespace='/irma')
 def card_response(message):
-    session['process'].stdin.write('%s\n' % message['data'])
+    session['process'].stdin.write('response %s\n' % message['data'])
 
     result = session['process'].stdout.readline().replace('\n', '')
     if result == '' or ' ' not in result:

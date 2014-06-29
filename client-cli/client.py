@@ -75,9 +75,9 @@ class IrmaNamespace(BaseNamespace):
 
     def on_card_request(self, *args):
         request = args[0]['data']
-        response = self.perform_request(request)
-        if response.startswith('response'):
-            irma_namespace.emit('card_response', {'data': response})
+        response = self.perform_request(request).split(' ')
+        if response[0] == 'response':
+            irma_namespace.emit('card_response', {'data': response[1]})
             socketIO.wait(seconds=1)
 
     def on_finished(self, *args):
