@@ -93,7 +93,9 @@ while (connURL == ''
     sys.stdout.write('Please enter the connection URL: ')
     connURL = sys.stdin.readline().replace('\n', '').strip()
 
-url, connectionID = connURL.split('#')
+split= connURL.split('#')
+url = split[0]
+connectionID = split[1]
 
 with SocketIO(url) as socketIO:
     irma_namespace = socketIO.define(IrmaNamespace, '/irma')
