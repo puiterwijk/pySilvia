@@ -7,6 +7,7 @@
     <h1>webSilvia - Index</h1>
 
     <form action="/authenticate/" method="POST">
+        <input type="hidden" name="requestor" value="test">
         <input type="hidden" name="request" value="{{ request }}">
         <input type="submit" value="Start">
     </form>

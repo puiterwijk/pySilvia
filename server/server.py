@@ -22,7 +22,14 @@ ISSUER_PATH = '/usr/bin/silvia_issuer'
 CONFIG_ROOT = '/usr/share/irma_configuration'
 ENABLE_TEST_REQUEST = False
 SECRET_KEY = 'setme'
-SHARED_SECRET = 'setme'
+
+REQUESTORS = {'test': {'secret-key': 'setme',
+                       'can-issue': []
+                      },
+              'fedoauth': {'secret-key': 'setme',
+                           'can-issue': []
+                          }
+             }
 
 
 # No changes need hereunder
@@ -55,7 +62,8 @@ connections = {}
 seen_nonces = set()
 
 
-signer = TimedSerializer(SHARED_SECRET)
+def get_serializer(requestor):
+    return TimedSerializer(REQUESTORS[requestor]['secret-key'])
 
 
 if ENABLE_TEST_REQUEST:
@@ -68,11 +76,12 @@ if ENABLE_TEST_REQUEST:
                                    'publickey-path': 'Surfnet/ipk.xml'}
 
 
-        new_req = {'token': uuid().hex,
+        new_req = {'protocol': 'request-1',
+                   'token': uuid().hex,
                    'nonce': time(),
                    'return_url': '/test/',
                    'credentials': credentials}
-        new_req = signer.dumps(new_req)
+        new_req = get_serializer('test').dumps(new_req)
 
         return render_template('index.html',
                                request=new_req)
@@ -80,15 +89,16 @@ if ENABLE_TEST_REQUEST:
     @app.route('/test/', methods=['POST'])
     def view_test():
         result = request.form['result']
-        result = signer.loads(result)
+        result = get_serializer('test').loads(result)
 
         return jsonify(result)
 
 
 @app.route('/authenticate/', methods=['POST'])
 def view_authenticate():
+    requestor = request.form['requestor']
     json_request = request.form['request']
-    json_request = signer.loads(json_request)
+    json_request = get_serializer(requestor).loads(json_request)
 
     # Check nonce
     if json_request['nonce'] in seen_nonces:
@@ -97,6 +107,7 @@ def view_authenticate():
 
     session['connid'] = uuid().hex
     connection = {}
+    connection['requestor'] = requestor
     connection['token'] = json_request['token']
     connection['to_verify'] = json_request['credentials']
     connection['to_issue'] = json_request.get('issue')
@@ -116,8 +127,8 @@ def room_join(message):
     emit('joined', {'data': 'Room joined'}, room=message['room'])
 
 
-def get_max_version(clientVersions):
-    if 'proxy-1' in clientVersions:
+def get_max_proxy_version(proxyVersions):
+    if 'proxy-1' in proxyVersions:
         return 'proxy-1'
     else:
         return None
@@ -126,8 +137,8 @@ def get_max_version(clientVersions):
 # These functions are used by the proxy
 @socketio.on('login', namespace='/irma')
 def login(message):
-    clientVersions = message['supportedVersions']
-    version_to_use = get_max_version(clientVersions)
+    proxyVersions = message['supportedVersions']
+    version_to_use = get_max_proxy_version(proxyVersions)
     if version_to_use is None:
         emit('finished', {'status': 'error', 'code': 'invalid-version'})
         return
@@ -275,7 +286,7 @@ def handle_next_command():
                         'issued': connections[session['connid']]['issue_results'],
                         'token': connections[session['connid']]['token']}
 
-            response = signer.dumps(response)
+            response = get_serializer(connections[session['connid']]['requestor']).dumps(response)
 
             emit('finished', response, room=session['connid'])
             # This is to the proxy, so it doesn't need to be in the room
