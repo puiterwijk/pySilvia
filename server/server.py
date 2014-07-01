@@ -198,35 +198,31 @@ def card_connected(message):
         kill_process()
         return
 
-    command = session['process'].stdout.readline().replace('\n', '')
-
-    if command == '':
-        emit('no-response', {'stderr': session['process'].stderr.read()})
-        kill_process()
-        return
-
-    control, options = command.split(' ', 1)
-
-    if control == 'request':
-        emit('card_request', {'data': options})
-        return
-    elif control == 'error':
-        emit('card_error', {'code': options})
-        kill_process()
-        return
-    else:
-        # Something went wrong
-        emit('weird_response', {'control': control,
-                                'options': options,
-                                'stderr': session['process'].stderr.read()})
-        kill_process()
-        return
+    return handle_next_command()
 
 
 @socketio.on('card_response', namespace='/irma')
 def card_response(message):
     session['process'].stdin.write('response %s\n' % message['data'])
 
+    return handle_next_command()
+
+
+@socketio.on('pin_ok', namespace='/irma')
+def card_pin_ok(message):
+    session['process'].stdin.write('PIN-result OK\n')
+
+    return handle_next_command()
+
+
+@socketio.on('pin', namespace='/irma')
+def card_pin(message):
+    session['process'].stdin.write('PIN %s\n' % message['pin'])
+
+    return handle_next_command()
+
+
+def handle_next_command():
     result = session['process'].stdout.readline().replace('\n', '')
     if result == '' or ' ' not in result:
         emit('card_error', {'code': result})
@@ -237,6 +233,9 @@ def card_response(message):
 
     if control == 'request':
         emit('card_request', {'data': options})
+    elif control == 'control' and options == 'send-pin':
+        emit('card_authenticate', {})
+        return
     elif control == 'result':
         results = session['process'].stdout.read().split('\n')
         results = [rslt.split(' ') for rslt in results[:-1]]

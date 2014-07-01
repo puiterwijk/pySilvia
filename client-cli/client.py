@@ -22,6 +22,7 @@ PROXY_PATH = '/usr/bin/silvia_proxy'
 
 # No changes need hereunder
 from socketIO_client import SocketIO, BaseNamespace
+from getpass import getpass
 import sys
 
 try:
@@ -80,6 +81,12 @@ class IrmaNamespace(BaseNamespace):
         if response[0] == 'response':
             irma_namespace.emit('card_response', {'data': response[1]})
             socketIO.wait(seconds=1)
+
+    def on_card_authenticate(self, *args):
+        # We need to get a PIN
+        PIN = getpass("PIN code: ")
+        # This is the insecure way (have the server generate the APDUs), but this will be improved soon
+        irma_namespace.emit('pin', {'pin': PIN})
 
     def on_finished(self, *args):
         irma_namespace.disconnect()
