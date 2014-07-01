@@ -1,0 +1,6 @@
+- Start using x509 instead of shared secrets
+Then a certificate can be specified as part of the request, and there is a mapping per remote server which credentials it may verify and issue.
+
+- Fix issuance
+
+- Make client-cli do local PIN
