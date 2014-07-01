@@ -118,7 +118,7 @@ def room_join(message):
 
 def get_max_version(clientVersions):
     if 'proxy-1' in clientVersions:
-        return 1
+        return 'proxy-1'
     else:
         return None
 
@@ -136,7 +136,7 @@ def login(message):
     session['connid'] = message['connID']
     session['version'] = version_to_use
     emit('proxied', {'data': 'Proxy connected'}, room=connid)
-    emit('loggedin', {})
+    emit('loggedin', {'version': session['version']})
 
 
 def kill_process():
@@ -268,7 +268,7 @@ def card_response(message):
         if (len(connections[session['connid']]['to_verify']) > 0 or
                 len(connections[session['connid']]['to_issue']) > 0):
             # Tell the client again they can start the protocol, so it reconnects to the card
-            emit('loggedin', {})
+            emit('loggedin', {'version': session['version']})
             return
         else:
             # No more credentials. Return
