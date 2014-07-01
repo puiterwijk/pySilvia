@@ -40,7 +40,8 @@ class IrmaNamespace(BaseNamespace):
         self.connectionID = connectionID
 
     def on_connected(self, *args):
-        irma_namespace.emit('login', {'connID': self.connectionID})
+        irma_namespace.emit('login', {'supportedVersions': ['proxy-1'],
+                                      'connID': self.connectionID})
 
     def on_loggedin(self, *args):
         self.proxy = subprocess.Popen(PROXY_PATH,

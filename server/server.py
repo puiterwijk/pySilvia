@@ -116,11 +116,25 @@ def room_join(message):
     emit('joined', {'data': 'Room joined'}, room=message['room'])
 
 
+def get_max_version(clientVersions):
+    if 'proxy-1' in clientVersions:
+        return 1
+    else:
+        return None
+
+
 # These functions are used by the proxy
 @socketio.on('login', namespace='/irma')
 def login(message):
+    clientVersions = message['supportedVersions']
+    version_to_use = get_max_version(clientVersions)
+    if version_to_use is None:
+        emit('finished', {'status': 'error', 'code': 'invalid-version'})
+        return
+
     connid = message['connID']
     session['connid'] = message['connID']
+    session['version'] = version_to_use
     emit('proxied', {'data': 'Proxy connected'}, room=connid)
     emit('loggedin', {})
 
@@ -266,7 +280,7 @@ def card_response(message):
 
             emit('finished', response, room=session['connid'])
             # This is to the proxy, so it doesn't need to be in the room
-            emit('finished', {})
+            emit('finished', {'status': 'OK'})
     elif control == 'error':
         emit('card_error', {'code': options})
         kill_process()
