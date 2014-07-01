@@ -25,15 +25,15 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="1.4"
-     inkscape:cx="323.56019"
+     inkscape:cx="324.98876"
      inkscape:cy="727.0939"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
      inkscape:window-width="1920"
-     inkscape:window-height="1014"
-     inkscape:window-x="0"
-     inkscape:window-y="27"
+     inkscape:window-height="1041"
+     inkscape:window-x="1920"
+     inkscape:window-y="0"
      inkscape:window-maximized="1" />
   <metadata
      id="metadata7">
@@ -55,8 +55,8 @@
        id="rect3160"
        width="271.42856"
        height="205.71428"
-       x="-34.999996"
-       y="175.93362" />
+       x="4.285718"
+       y="190.93362" />
     <g
        id="g3930"
        inkscape:export-filename="/home/puiterwijk/Documents/Development/Projectjes/FedOAuth/fedoauth/static/general/fedoauth-authn-logo-white.png"
@@ -83,7 +83,7 @@
     <text
        inkscape:export-ydpi="90"
        inkscape:export-xdpi="90"
-       inkscape:export-filename="/home/puiterwijk/tmp/python-comm/server/static/logo.png"
+       inkscape:export-filename="/home/puiterwijk/Documents/Development/Projectjes/webSilvia/server/static/logo.png"
        sodipodi:linespacing="125%"
        id="text3156-0"
        y="337.10846"
@@ -95,6 +95,6 @@
          y="337.10846"
          x="343.99789"
          id="tspan3158-1"
-         sodipodi:role="line">pySilvia</tspan></text>
+         sodipodi:role="line">webSilvia</tspan></text>
   </g>
 </svg>
