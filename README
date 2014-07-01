@@ -1,0 +1,10 @@
+webSilvia
+=========
+webSilvia is a web service that can be used for verifying and issueing IRMA credentials.
+
+More documentation is coming soon.
+
+
+This code should currently under rapid development.
+Except often breakages between different client and server versions.
+Versioning is being embedded in the protocol, and will be enabled once the first release is made.
