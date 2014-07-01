@@ -1,0 +1,8 @@
+To package (Fedora/EPEL):
+
+- gevent-socketio
+|- flask-socketio
+ |- webSilvia-Server
+
+- socketIO-client
+|- webSilvia-Client-CLI
