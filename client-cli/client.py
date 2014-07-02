@@ -87,6 +87,7 @@ class IrmaNamespace(BaseNamespace):
         PIN = getpass("PIN code: ")
         # This is the insecure way (have the server generate the APDUs), but this will be improved soon
         irma_namespace.emit('pin', {'pin': PIN})
+        socketIO.wait(seconds=1)
 
     def on_finished(self, *args):
         irma_namespace.disconnect()
