@@ -84,9 +84,29 @@ class IrmaNamespace(BaseNamespace):
 
     def on_card_authenticate(self, *args):
         # We need to get a PIN
-        PIN = getpass("PIN code: ")
-        # This is the insecure way (have the server generate the APDUs), but this will be improved soon
-        irma_namespace.emit('pin', {'pin': PIN})
+
+        pindone = None
+        while pindone is None:
+            PIN = getpass("PIN code: ")
+            APDU = '0020000008' + PIN.encode('hex')
+            while len(APDU) < 26:
+                APDU += '00'
+
+            response = self.perform_request(APDU).split(' ')
+
+            if response[1] == '9000':
+                pindone = True
+            elif response[1] == '63C0':
+                pindone = False
+                print 'Error: Card blocked'
+            else:
+                print 'Error: PIN incorrect (%u tries remaining). Try again!' % int(response[1][3])
+
+        if not pindone:
+            # abort
+            raise Exception('PIN error')
+
+        irma_namespace.emit('pin_ok', {})
         socketIO.wait(seconds=1)
 
     def on_finished(self, *args):
