@@ -40,6 +40,10 @@ Status: <span id="status">Initializing</span>
                 $('#status').text('Retrieving ' + credential);
             });
 
+            socket.on('issueing', function(credential) {
+                $('#status').text('Issueing ' + credential);
+            });
+
             socket.on('finished', function(response) {
                 $('#status').text('Finished!');
                 $('#connstring').remove();
