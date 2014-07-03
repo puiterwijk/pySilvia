@@ -57,8 +57,10 @@ if app.config['ENABLE_TEST_REQUEST']:
         to_verify = {}
         to_verify['rootNone'] = {'issuer-spec-path': 'Surfnet/Issues/root/description.xml',
                                    'verifier-spec-path': 'Surfnet/Verifies/rootNone/description.xml',
-                                   'publickey-path': 'Surfnet/ipk.xml'}
+                                   'publickey-path': 'Surfnet/ipk.xml',
+                                   'expected': {}}
 
+        to_issue = {}
 
         new_req = {'protocol': 'request-1',
                    'token': uuid().hex,
@@ -110,8 +112,6 @@ def view_authenticate():
                 connection['issue_results'][cred_to_issue] = {'result': 'unknown-key'}
         else:
             connection['issue_results'][cred_to_issue] = {'result': 'unauthorized'}
-
-    print connection
 
     connections[session['connid']] = connection
 
@@ -292,13 +292,20 @@ def handle_next_command():
 
         credential = connections[session['connid']]['current_credential']
         if credential['operation'] == 'verify':
-            # TODO: Check expected credential result values against retrieved values
+            if 'expected' in credential.keys():
+                for attribute in credential['expected'].keys():
+                    if (attribute not in attributes.keys() or
+                            attributes[attribute] != credential['expected'][attribute]):
+                        # At least one expected attribute was not found...
+                        # We now invalidate all issuances
+                        for to_issue in connections[session['connid']]['to_issue'].keys():
+                            connections[session['connid']]['issue_results'][to_issue] = {'result': 'verify-error'}
+                            del connections[session['connid']]['to_issue'][to_issue]
 
             connections[session['connid']]['verify_results'][credential['name']] = {'status': status,
                                                                                     'expiry': expiry,
                                                                                     'attributes': attributes}
         elif credential['operation'] == 'issue':
-            # TODO: check for issuance result
             connections[session['connid']]['issue_results'][credential['name']] = {'status': status}
             pass
 
@@ -336,12 +343,10 @@ def handle_next_command():
 @socketio.on('connect', namespace='/irma')
 def irma_connect():
     emit('connected', {'data': 'Connected'})
-    print 'Client connected'
 
 
 @socketio.on('disconnect', namespace='/irma')
 def irma_disconnect():
-    print('Client disconnected')
     kill_process()
 
 

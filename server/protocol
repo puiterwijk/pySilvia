@@ -1,7 +1,9 @@
 to_verify = {}
-to_verify['rootNone'] = {'issuer-spec-path': 'Surfnet/Issues/root/description.xml',
-                         'verifier-spec-path': 'Surfnet/Verifies/rootNone/description.xml',
-                         'publickey-path': 'Surfnet/ipk.xml'}
+to_verify['fedoauth'] = {'issuer-spec-path': 'Fedora/Issues/fasAccount/description.xml',
+                         'verifier-spec-path': 'Fedora/Verifies/fedoauth/description.xml',
+                         'publickey-path': 'Fedora/ipk.xml',
+                         'expected': {'username': 'puiterwijk'}}
+
 
 to_issue = {}
 to_issue['fedoraRoot'] = {'id': 600,
