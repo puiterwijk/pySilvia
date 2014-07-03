@@ -16,23 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with webSilvia.  If not, see <http://www.gnu.org/licenses/>.
 
-# Please configure the path to the silvia verifier and issuer bin dir and the IRMA configuration dir
-VERIFIER_PATH = '/usr/bin/silvia_verifier'
-ISSUER_PATH = '/usr/bin/silvia_issuer'
-CONFIG_ROOT = '/usr/share/irma_configuration'
-ENABLE_TEST_REQUEST = False
-SECRET_KEY = 'setme'
-
-REQUESTORS = {'test': {'secret-key': 'setme',
-                       'can-issue': []
-                      },
-              'fedoauth': {'secret-key': 'setme',
-                           'can-issue': []
-                          }
-             }
-
-
-# No changes need hereunder
 from gevent import monkey
 monkey.patch_all()
 
@@ -42,6 +25,7 @@ except ImportError:
     import subprocess
 
 from time import time
+from tempfile import mkstemp
 from itsdangerous import TimedSerializer
 from uuid import uuid4 as uuid
 from flask import Flask, render_template, session, request, jsonify
@@ -55,7 +39,7 @@ logging.getLogger().setLevel(logging.INFO)
 
 app = Flask(__name__)
 app.debug = True
-app.config['SECRET_KEY'] = SECRET_KEY
+app.config.from_envvar('WEBSILVIA_SERVER_CONFIG')
 socketio = SocketIO(app)
 
 connections = {}
@@ -63,15 +47,15 @@ seen_nonces = set()
 
 
 def get_serializer(requestor):
-    return TimedSerializer(REQUESTORS[requestor]['secret-key'])
+    return TimedSerializer(app.config['REQUESTORS'][requestor]['secret-key'])
 
 
-if ENABLE_TEST_REQUEST:
+if app.config['ENABLE_TEST_REQUEST']:
     @app.route('/')
     def index():
         # This is used to create a testing request
-        credentials = {}
-        credentials['rootNone'] = {'issuer-spec-path': 'Surfnet/Issues/root/description.xml',
+        to_verify = {}
+        to_verify['rootNone'] = {'issuer-spec-path': 'Surfnet/Issues/root/description.xml',
                                    'verifier-spec-path': 'Surfnet/Verifies/rootNone/description.xml',
                                    'publickey-path': 'Surfnet/ipk.xml'}
 
@@ -80,7 +64,8 @@ if ENABLE_TEST_REQUEST:
                    'token': uuid().hex,
                    'nonce': time(),
                    'return_url': '/test/',
-                   'credentials': credentials}
+                   'to_verify': to_verify,
+                   'to_issue': to_issue}
         new_req = get_serializer('test').dumps(new_req)
 
         return render_template('index.html',
@@ -109,11 +94,25 @@ def view_authenticate():
     connection = {}
     connection['requestor'] = requestor
     connection['token'] = json_request['token']
-    connection['to_verify'] = json_request['credentials']
-    connection['to_issue'] = json_request.get('issue')
+    connection['to_verify'] = json_request['to_verify']
+    connection['to_issue'] = {}
     connection['current_credential'] = None
     connection['verify_results'] = {}
     connection['issue_results'] = {}
+
+    to_issue = json_request.get('to_issue', {})
+    for cred_to_issue in to_issue.keys():
+        # Check if this requestor is allowed to issue this credential
+        if to_issue[cred_to_issue]['key'] in app.config['REQUESTORS'][requestor]['can_issue_with_keys']:
+            if to_issue[cred_to_issue]['key'] in app.config['KEYS'].keys():
+                connection['to_issue'][cred_to_issue] = to_issue[cred_to_issue]
+            else:
+                connection['issue_results'][cred_to_issue] = {'result': 'unknown-key'}
+        else:
+            connection['issue_results'][cred_to_issue] = {'result': 'unauthorized'}
+
+    print connection
+
     connections[session['connid']] = connection
 
     return render_template('authenticate.html',
@@ -162,40 +161,71 @@ def kill_process():
 @socketio.on('card_connected', namespace='/irma')
 def card_connected(message):
     # Get the next credential
-    current_operation = ''
-    if len(connections[session['connid']]['to_verify']) > 0:
-        current_operation = 'verify'
-    elif len(connections[session['connid']]['to_issue']) > 0:
-        current_operation = 'issue'
-        credentials = connections[session['connid']]['to_issue']
-        # ISSUE
-    else:
-        # Huh?
-        raise Exception('Invalid state: no-ver and no-iss')
+    if connections[session['connid']]['current_credential'] is None:
+        current_operation = ''
+        if len(connections[session['connid']]['to_verify']) > 0:
+            current_operation = 'verify'
+        elif len(connections[session['connid']]['to_issue']) > 0:
+            current_operation = 'issue'
+        else:
+            # Huh?
+            raise Exception('Invalid state: no-ver and no-iss')
 
-    credentials = connections[session['connid']]['to_%s' % current_operation]
-    credential_name = credentials.keys()[0]
-    credential = credentials[credential_name]
-    connections[session['connid']]['current_credential'] = credential
-    connections[session['connid']]['current_credential']['name'] = credential_name
-    connections[session['connid']]['current_credential']['operation'] = current_operation
-    del connections[session['connid']]['to_%s' % current_operation][credential_name]
+        credentials = connections[session['connid']]['to_%s' % current_operation]
+        credential_name = credentials.keys()[0]
+        credential = credentials[credential_name]
+        connections[session['connid']]['current_credential'] = credential
+        connections[session['connid']]['current_credential']['name'] = credential_name
+        connections[session['connid']]['current_credential']['operation'] = current_operation
+        del connections[session['connid']]['to_%s' % current_operation][credential_name]
 
     cmd = None
+    current_operation = connections[session['connid']]['current_credential']['operation']
+    credential_name = connections[session['connid']]['current_credential']['name']
+    credential = connections[session['connid']]['current_credential']
+
     if current_operation == 'verify':
         emit('retrieving', credential_name, room=session['connid'])
-        cmd = [VERIFIER_PATH,
+        cmd = [app.config['PATHS']['verifier'],
                '-S',
                '-I',
-               '%s/%s' % (CONFIG_ROOT, credential['issuer-spec-path']),
+               '%s/%s' % (app.config['PATHS']['config'], credential['issuer-spec-path']),
                '-V',
-               '%s/%s' % (CONFIG_ROOT, credential['verifier-spec-path']),
+               '%s/%s' % (app.config['PATHS']['config'], credential['verifier-spec-path']),
                '-k',
-               '%s/%s' % (CONFIG_ROOT, credential['publickey-path'])]
+               '%s/%s' % (app.config['PATHS']['config'], credential['publickey-path'])]
     elif current_operation == 'issue':
-        # TODO: START ISSUER
         emit('issueing', credential_name, room=session['connid'])
-        pass
+        key_paths = app.config['KEYS'][credential['key']]
+        attribute_string = '<Attribute '
+        for attribute in credential['attributes'].keys():
+            attribute_string += '''type="''' + credential['attributes'][attribute]['type'] + '''">
+                                       <Name>''' + attribute + '''</Name>
+                                       <Value>''' + credential['attributes'][attribute]['value'] + '''</Value>
+                                   </Attribute>'''
+        ispec_string = '''
+            <CredentialIssueSpecification>
+                <Name>XXX</Name>
+                <IssuerID>XXX</IssuerID>
+                <Id>%s</Id>
+                <Expires>%s</Expires>
+                <Attributes>
+                    %s 
+                </Attributes>
+            </CredentialIssueSpecification>
+            ''' % (credential['id'], credential['expires'], attribute_string)
+
+        issue_spec = mkstemp(prefix='ispec')
+        with open(issue_spec[1], 'w') as f:
+            f.write(ispec_string)
+        cmd = [app.config['PATHS']['issuer'],
+               '-S',
+               '-I',
+               '%s' % issue_spec[1],
+               '-k',
+               '%s' % key_paths['public'],
+               '-s',
+               '%s' % key_paths['private']]
 
     session['process'] = subprocess.Popen(cmd,
                                           stdin=subprocess.PIPE,
@@ -274,6 +304,7 @@ def handle_next_command():
 
 
         kill_process()
+        connections[session['connid']]['current_credential'] = None
 
         if (len(connections[session['connid']]['to_verify']) > 0 or
                 len(connections[session['connid']]['to_issue']) > 0):
@@ -282,7 +313,7 @@ def handle_next_command():
             return
         else:
             # No more credentials. Return
-            response = {'credentials': connections[session['connid']]['verify_results'],
+            response = {'verified': connections[session['connid']]['verify_results'],
                         'issued': connections[session['connid']]['issue_results'],
                         'token': connections[session['connid']]['token']}
 

@@ -18,6 +18,7 @@
 
 # You can not increase this from one for now, as we use global variables
 workers = 1
+
 worker_class = 'socketio.sgunicorn.GeventSocketIOWorker'
 bind = '0.0.0.0:5000'
 pidfile = '/opt/webSilvia/server/gunicorn.pid'

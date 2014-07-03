@@ -1,0 +1,15 @@
+PATHS = {'verifier': '/bin/silvia_verifier',
+         'issuer': '/bin/silvia_issuer',
+         'config': '/usr/share/irma_configuration'
+        }
+
+KEYS = {}
+
+ENABLE_TEST_REQUEST = False
+
+SECRET_KEY = 'setme'
+
+REQUESTORS = {'test': {'secret-key': 'setme',
+                       'can_issue_with_keys': []
+                      },
+             }

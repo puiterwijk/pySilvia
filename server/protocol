@@ -1,0 +1,21 @@
+to_verify = {}
+to_verify['rootNone'] = {'issuer-spec-path': 'Surfnet/Issues/root/description.xml',
+                         'verifier-spec-path': 'Surfnet/Verifies/rootNone/description.xml',
+                         'publickey-path': 'Surfnet/ipk.xml'}
+
+to_issue = {}
+to_issue['fedoraRoot'] = {'id': 600,
+                          'key': 'fedora',
+                          'expires': 365,
+                          'attributes': {'valid': {'type': 'string',
+                                                   'value': 'yes'}
+                                        }
+                         }
+
+new_req = {'protocol': 'request-1',
+           'token': uuid().hex,
+           'nonce': time(),
+           'return_url': '/test/',
+           'to_verify': to_verify,
+           'to_issue': to_issue}
+new_req = get_serializer('test').dumps(new_req)
