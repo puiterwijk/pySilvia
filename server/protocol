@@ -9,9 +9,9 @@ to_issue = {}
 to_issue['fedoraRoot'] = {'id': 600,
                           'key': 'fedora',
                           'expires': 365,
-                          'attributes': {'valid': {'type': 'string',
-                                                   'value': 'yes'}
-                                        }
+                          'attributes': [{'type': 'string',
+                                          'value': 'yes'}
+                                        ]
                          }
 
 new_req = {'protocol': 'request-1',

@@ -198,10 +198,10 @@ def card_connected(message):
         emit('issueing', credential_name, room=session['connid'])
         key_paths = app.config['KEYS'][credential['key']]
         attribute_string = ''
-        for attribute in credential['attributes'].keys():
-            attribute_string += '''<Attribute type="''' + credential['attributes'][attribute]['type'] + '''">
-                                       <Name>''' + attribute + '''</Name>
-                                       <Value>''' + credential['attributes'][attribute]['value'] + '''</Value>
+        for attribute in credential['attributes']:
+            attribute_string += '''<Attribute type="''' + attribute['type'] + '''">
+                                       <Name>XXXX</Name>
+                                       <Value>''' + attribute['value'] + '''</Value>
                                    </Attribute>'''
         ispec_string = '''
             <CredentialIssueSpecification>
@@ -210,7 +210,7 @@ def card_connected(message):
                 <Id>%s</Id>
                 <Expires>%s</Expires>
                 <Attributes>
-                    %s 
+                    %s
                 </Attributes>
             </CredentialIssueSpecification>
             ''' % (credential['id'], credential['expires'], attribute_string)
