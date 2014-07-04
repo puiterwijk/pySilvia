@@ -62,6 +62,8 @@ class IrmaNamespace(BaseNamespace):
             print 'Status: %s' % status
             sys.exit(1)
 
+        print 'Waiting for card connection...'
+
         status = self.proxy.stdout.readline().replace('\n', '')
         if status == 'control connected':
             print 'Card connected! Notifying server and starting protocol.'
