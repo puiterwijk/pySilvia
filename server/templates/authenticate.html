@@ -44,6 +44,10 @@ Status: <span id="status">Initializing</span>
                 $('#status').text('Issueing ' + credential);
             });
 
+            socket.on('progress', function(message) {
+                $('#status').text($('#status').text() + '.');
+            });
+
             socket.on('finished', function(response) {
                 $('#status').text('Finished!');
                 $('#connstring').remove();

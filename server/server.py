@@ -244,6 +244,7 @@ def card_connected(message):
 
 @socketio.on('card_response', namespace='/irma')
 def card_response(message):
+    emit('progress', {'type': 'response'}, room=session['connid'])
     session['process'].stdin.write('response %s\n' % message['data'])
 
     return handle_next_command()
@@ -251,6 +252,7 @@ def card_response(message):
 
 @socketio.on('pin_ok', namespace='/irma')
 def card_pin_ok(message):
+    emit('progress', {'type': 'pin', 'result': 'ok'}, room=session['connid'])
     session['process'].stdin.write('PIN-result OK\n')
 
     return handle_next_command()
@@ -258,6 +260,7 @@ def card_pin_ok(message):
 
 @socketio.on('pin', namespace='/irma')
 def card_pin(message):
+    emit('progress', {'type': 'pin', 'result': 'sent'}, room=session['connid'])
     session['process'].stdin.write('PIN %s\n' % message['pin'])
 
     return handle_next_command()
@@ -273,11 +276,15 @@ def handle_next_command():
     control, options = result.split(' ', 1)
 
     if control == 'request':
+        emit('progress', {'type': 'request'}, room=session['connid'])
+        emit('request', {}, room=session['connid'])
         emit('card_request', {'data': options})
     elif control == 'control' and options == 'send-pin':
+        emit('progress', {'type': 'pin', 'result': 'ask'}, room=session['connid'])
         emit('card_authenticate', {})
         return
     elif control == 'result':
+        emit('progress', {'type': 'result'}, room=session['connid'])
         results = session['process'].stdout.read().split('\n')
         results = [rslt.split(' ') for rslt in results[:-1]]
         status = result.split(' ')[1]
