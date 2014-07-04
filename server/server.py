@@ -195,7 +195,7 @@ def card_connected(message):
                '-k',
                '%s/%s' % (app.config['PATHS']['config'], credential['publickey-path'])]
     elif current_operation == 'issue':
-        emit('issueing', credential_name, room=session['connid'])
+        emit('issuing', credential_name, room=session['connid'])
         key_paths = app.config['KEYS'][credential['key']]
         attribute_string = ''
         for attribute in credential['attributes']:

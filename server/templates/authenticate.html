@@ -40,8 +40,8 @@ Status: <span id="status">Initializing</span>
                 $('#status').text('Retrieving ' + credential);
             });
 
-            socket.on('issueing', function(credential) {
-                $('#status').text('Issueing ' + credential);
+            socket.on('issuing', function(credential) {
+                $('#status').text('Issuing ' + credential);
             });
 
             socket.on('progress', function(message) {
