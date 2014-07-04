@@ -197,9 +197,9 @@ def card_connected(message):
     elif current_operation == 'issue':
         emit('issueing', credential_name, room=session['connid'])
         key_paths = app.config['KEYS'][credential['key']]
-        attribute_string = '<Attribute '
+        attribute_string = ''
         for attribute in credential['attributes'].keys():
-            attribute_string += '''type="''' + credential['attributes'][attribute]['type'] + '''">
+            attribute_string += '''<Attribute type="''' + credential['attributes'][attribute]['type'] + '''">
                                        <Name>''' + attribute + '''</Name>
                                        <Value>''' + credential['attributes'][attribute]['value'] + '''</Value>
                                    </Attribute>'''
